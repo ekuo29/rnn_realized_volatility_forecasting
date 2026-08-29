@@ -1,99 +1,75 @@
 # RNN Realized Volatility Forecasting
 
-This project forecasts NVIDIA's next-day realized volatility with recurrent neural networks. It is a standalone version of my RNN contribution to a broader financial-machine-learning project and intentionally excludes the other group models.
+This repository contains my original Recurrent Neural Network (RNN) contribution to a FINANCE 704 group project on next-day realized-volatility forecasting. The code is preserved as submitted and excludes the other group members' models.
 
 ## Project objective
 
-The analysis tests whether an RNN can capture the short-run persistence and clustering found in realized volatility. It compares:
+The analysis tests whether recurrent neural networks can capture the persistence and clustering of NVIDIA's realized volatility. It compares:
 
-- single-layer and two-layer SimpleRNN architectures;
-- a univariate specification based on NVDA volatility history;
-- multivariate specifications with a 10-day volatility average and VIX; and
-- alternative units, dropout rates, learning rates, and optimizers.
+- single-layer and multi-layer SimpleRNN architectures;
+- univariate and multivariate feature specifications;
+- 32 and 64 recurrent units;
+- dropout rates of 0.1 and 0.2;
+- learning rates of 0.0005, 0.001, and 0.002; and
+- Adam, RMSprop, and SGD optimizers.
 
-## Modeling approach
+## Original modeling workflow
 
-| Stage | Implementation |
+| Stage | Original implementation |
 |---|---|
-| Target | Next-day NVDA realized volatility |
-| Input window | Previous 21 trading days |
-| Feature engineering | Log realized volatility, log 10-day realized-volatility average, and log VIX |
+| Target | Shifted next-day log realized volatility |
+| Input window | 21 observations |
+| Features | Log realized volatility, log VIX, and a log 10-day volatility moving average |
 | Time split | 2018-2022 training, 2023-2024 validation, and 2025 test |
-| Scaling | Standardization fitted on training data only |
-| Architectures | One or two `SimpleRNN` layers followed by dropout and a dense forecast layer |
-| Training | Huber loss, early stopping, and deterministic seed 42 |
-| Model selection | Lowest validation RMSE; test data is used once for final evaluation |
+| Scaling | `StandardScaler` fitted on the training period |
+| Architectures | One-layer and two-layer `SimpleRNN` models with dropout and a dense output layer |
+| Loss | Huber loss |
+| Selection | Lowest validation RMSE before final test evaluation |
 
-The standalone implementation makes the forecasting alignment explicit: a prediction dated *t* uses only the preceding 21 observations. This prevents the target day from appearing in its own input window.
+## Original results
 
-## Results
+The submitted analysis selected a tuned two-layer multivariate RNN using `log_rv` and `log_rv_ma10`.
 
-The original model-development run selected a two-layer multivariate RNN using log realized volatility and its log 10-day moving average. The selected tuning values were:
+| Model | Validation RMSE |
+|---|---:|
+| Best tuned single-layer RNN | 0.006432 |
+| Best tuned multi-layer RNN | 0.006427 |
 
-- 32 recurrent units per layer;
-- 20% dropout;
-- Adam optimizer with a 0.0005 learning rate; and
-- a 21-day input sequence.
+The final RNN recorded a test RMSE of **0.006548** in the submitted group report.
 
-The published standalone pipeline was rerun end to end after making the one-day forecast alignment explicit. Its verified results are:
+## Code
 
-| Period | RMSE | MAE |
-|---|---:|---:|
-| Validation (2023-2024) | 0.007742 | 0.004875 |
-| Test (2025) | 0.008087 | 0.004819 |
+[`rnn_realized_volatility.py`](rnn_realized_volatility.py) is the exact RNN section from the submitted group Python export. Its model logic, sequence construction, tuning loops, variable names, comments, and plotting code have not been refactored or rewritten.
 
-The original submitted experiment used a different target/sequence convention and reported lower errors. Those values are not presented as directly comparable here; the repository results come from the stricter implementation in the published code. Small differences can still occur across TensorFlow versions and hardware.
+The original section begins after the group's shared preprocessing and therefore expects an existing `nvda` pandas DataFrame with:
 
-### Reproduced diagnostics
+- a datetime index; and
+- an `rv_unit` column containing NVIDIA realized volatility.
 
-| Training history | 2025 test forecast |
-|---|---|
-| ![Training and validation loss](results/training_history.png) | ![Actual and forecast realized volatility](results/test_forecast.png) |
+It downloads VIX observations with `yfinance`, constructs the RNN features, trains the candidate models, selects the final specification using validation RMSE, and evaluates the selected model on the test period.
 
-The forecast tracks the overall volatility regime but smooths abrupt spikes, which is a common limitation of squared-error-oriented time-series forecasts.
-
-## Reproduce the analysis
-
-Python 3.11 or newer is recommended.
+## Dependencies
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-
-python rnn_realized_volatility.py \
-  --rv-data "/path/to/daily_metrics.pkl" \
-  --vix-data "/path/to/VIXCLS.xlsx"
 ```
-
-The default command fits the selected final RNN and writes metrics and figures to `results/`. The VIX file is optional for this final specification because the chosen feature set does not use VIX.
-
-To repeat the complete feature comparison and hyperparameter search:
-
-```bash
-python rnn_realized_volatility.py \
-  --rv-data "/path/to/daily_metrics.pkl" \
-  --vix-data "/path/to/VIXCLS.xlsx" \
-  --tune
-```
-
-The full search evaluates four feature groups for each architecture, then tunes dropout, learning rate, recurrent units, and optimizer. It can take substantially longer than the default run.
 
 ## Repository structure
 
 ```text
 .
-├── rnn_realized_volatility.py   # Standalone RNN workflow
+├── rnn_realized_volatility.py   # Original submitted RNN code
 ├── requirements.txt             # Python dependencies
-├── results/                     # Reproduced metrics and figures
 └── README.md
 ```
 
 ## Data and publication note
 
-The realized-volatility dataset, assignment instructions, full group report, and classmates' code are not distributed here because they are course or third-party materials. With authorized access, place `daily_metrics.pkl` and the FRED `VIXCLS` workbook anywhere locally and pass their paths on the command line.
+The course dataset, assignment instructions, full group report, and classmates' code are intentionally excluded because they are course or third-party materials. This repository contains only my original RNN contribution and a project description.
 
-No open-source license has been applied. This repository shares the RNN implementation and its documented results without granting redistribution rights for the underlying course data.
+No open-source license has been applied. The repository does not grant redistribution rights for the underlying course data.
 
 ## Reference
 

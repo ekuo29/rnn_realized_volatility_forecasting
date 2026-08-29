@@ -1,6 +1,6 @@
 matplotlib>=3.8,<4
 numpy>=1.26,<2.1
-openpyxl>=3.1,<4
 pandas>=2.2,<3
 scikit-learn>=1.4,<2
 tensorflow>=2.16,<2.21
+yfinance>=0.2,<2
