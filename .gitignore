@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Course-provided or locally downloaded data
+data/
+*.pkl
+*.xlsx
+*.xls
+
+# Saved model binaries
+*.keras
+*.h5
+checkpoints/
