@@ -32,8 +32,7 @@ Realized volatility measures the variation observed from intraday price movement
 | Feature engineering | Create log realized volatility, log VIX, and a log 10-day moving average of realized volatility. |
 | Target | Forecast next-day log realized volatility using a one-day-ahead shifted target. |
 | Sequence construction | Use the previous 21 observations as each RNN input window. |
-| Time split | Train on 2018-2022, validate on 2023-2024, and reserve 2025 for final testing. |
-| Scaling | Fit separate `StandardScaler` transformations for features and the target using training data only. |
+| Time split | Train on 2018–2022, validate on 2023–2024, and test on 2025. |
 | Architectures | Compare one-layer and two-layer `SimpleRNN` models with dropout and a dense output layer. |
 | Model development | Evaluate four univariate and multivariate feature groups for each architecture. |
 | Hyperparameter tuning | Test 32 or 64 units, dropout of 0.1 or 0.2, three learning rates, and Adam, RMSprop, or SGD. |
