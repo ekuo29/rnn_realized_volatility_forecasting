@@ -1,58 +1,61 @@
 # RNN Realized Volatility Forecasting
 
-This project develops Recurrent Neural Network (RNN) models to forecast NVIDIA's next-day realized volatility. It investigates whether recurrent architectures can capture the long-memory behavior and clustering commonly observed in financial-market volatility. The analysis compares single-layer and multi-layer SimpleRNN models and tests whether adding a 10-day realized-volatility moving average and the CBOE Volatility Index (VIX) improves forecasting performance.
+We develop Recurrent Neural Network (RNN) models to forecast NVIDIA's next-day realized volatility. The analysis examines whether recurrent architectures can capture volatility persistence and long-memory behavior, and whether moving-average volatility and the CBOE Volatility Index (VIX) improve predictions beyond a univariate specification.
 
-## Project objectives
+## Project objective
 
-- Forecast next-day realized volatility for NVIDIA (NVDA).
-- Compare single-layer and multi-layer SimpleRNN architectures.
-- Compare univariate models with multivariate models using moving-average volatility and VIX features.
-- Tune the number of recurrent units, dropout rate, learning rate, and optimizer.
-- Select the best model using validation RMSE before evaluating it on the untouched test period.
+The workflow is designed to:
 
-## Modeling workflow
+- forecast next-day realized volatility for NVIDIA (NVDA);
+- compare single-layer and multi-layer SimpleRNN architectures;
+- compare univariate and multivariate feature specifications;
+- tune the number of recurrent units, dropout rate, learning rate, and optimizer; and
+- select the final model using validation performance before evaluating the untouched test period.
+
+## Data
+
+The analysis uses daily realized-volatility observations from 2018 through 2025. NVIDIA is selected as the target asset, and its reported realized volatility is used directly as `rv_unit`. The script downloads daily VIX observations with `yfinance` and joins them to the NVIDIA series by date.
+
+The input file, `daily_metrics.pkl`, must contain at least the following columns:
+
+- `sym_root`: asset ticker;
+- `date`: observation date; and
+- `realized_volatility`: daily realized volatility.
+
+Realized volatility measures the variation observed from intraday price movements, while VIX represents the market's forward-looking implied-volatility expectations. VIX is evaluated as an external feature because broader market uncertainty may help explain changes in NVIDIA's volatility.
+
+## Modeling approach
 
 | Stage | Implementation |
 |---|---|
-| Target | Shifted next-day log realized volatility |
-| Input window | 21 observations |
-| Features | Log realized volatility, log VIX, and a log 10-day volatility moving average |
-| Time split | 2018-2022 training, 2023-2024 validation, and 2025 test |
-| Scaling | `StandardScaler` fitted on the training period |
-| Architectures | One-layer and two-layer `SimpleRNN` models with dropout and a dense output layer |
-| Loss | Huber loss |
-| Selection | Lowest validation RMSE before final test evaluation |
+| Data preparation | Filter the daily dataset for NVDA, create a chronological datetime index, download VIX, and join the series by date. |
+| Feature engineering | Create log realized volatility, log VIX, and a log 10-day moving average of realized volatility. |
+| Target | Forecast next-day log realized volatility using a one-day-ahead shifted target. |
+| Sequence construction | Use the previous 21 observations as each RNN input window. |
+| Time split | Train on 2018-2022, validate on 2023-2024, and reserve 2025 for final testing. |
+| Scaling | Fit separate `StandardScaler` transformations for features and the target using training data only. |
+| Architectures | Compare one-layer and two-layer `SimpleRNN` models with dropout and a dense output layer. |
+| Model development | Evaluate four univariate and multivariate feature groups for each architecture. |
+| Hyperparameter tuning | Test 32 or 64 units, dropout of 0.1 or 0.2, three learning rates, and Adam, RMSprop, or SGD. |
+| Training | Use Huber loss and early stopping with restoration of the best validation weights. |
+| Model selection | Select the lowest validation RMSE before performing a single final test evaluation. |
 
-## Results summary
+The multivariate specifications test a volatility moving average, VIX, and their combination. This design separates model development from final evaluation and prevents the 2025 test period from influencing model selection.
 
-The analysis selected a tuned two-layer multivariate RNN using `log_rv` and `log_rv_ma10`.
+## Results
 
 | Model | Validation RMSE |
 |---|---:|
 | Best tuned single-layer RNN | 0.006432 |
 | Best tuned multi-layer RNN | 0.006427 |
 
-The final RNN recorded a test RMSE of **0.006548**.
+The tuned multi-layer RNN produced the lowest validation RMSE, although its improvement over the tuned single-layer model was small. The selected specification used `log_rv` and `log_rv_ma10`, indicating that recent volatility history was more useful than including VIX in the final model.
 
-## Code
+The selected RNN achieved a test RMSE of **0.006548** on the reserved 2025 observations.
 
-[`rnn_realized_volatility.py`](rnn_realized_volatility.py) contains the original RNN analysis with light cleanup of redundant code. The feature comparisons, model architectures, hyperparameter grid, validation-based selection, and final test workflow are unchanged.
+## Reproduce the analysis
 
-The script now defines the `nvda` DataFrame directly from `daily_metrics.pkl`. Keep that file in the same folder when running the analysis. The dataset must contain:
-
-- a `sym_root` column containing the ticker symbol;
-- a `date` column; and
-- a `realized_volatility` column.
-
-It downloads VIX observations with `yfinance`, constructs the RNN features, trains the candidate models, selects the final specification using validation RMSE, and evaluates the selected model on the test period.
-
-Run the analysis with:
-
-```bash
-python rnn_realized_volatility.py
-```
-
-## Dependencies
+Create a Python environment and install the required packages:
 
 ```bash
 python -m venv .venv
@@ -60,20 +63,27 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
+Keep `daily_metrics.pkl` in the repository folder, then run:
+
+```bash
+python rnn_realized_volatility.py
+```
+
+The script runs the complete development and tuning workflow, so execution may take time depending on the available hardware.
+
 ## Repository structure
 
 ```text
 .
-├── rnn_realized_volatility.py   # Cleaned original RNN analysis
+├── rnn_realized_volatility.py   # Reproducible RNN modeling workflow
+├── daily_metrics.pkl            # Required realized-volatility data
 ├── requirements.txt             # Python dependencies
 └── README.md
 ```
 
-## Publication note
+## Data use note
 
-This repository focuses on the RNN implementation. The project instructions and other model architectures are not included. The dataset may have separate redistribution restrictions, so permission should be confirmed before keeping `daily_metrics.pkl` in a public repository.
-
-No open-source license has been applied. The repository does not grant redistribution rights for the underlying course data.
+The dataset may have separate redistribution restrictions. Confirm that public distribution is permitted before keeping `daily_metrics.pkl` in a public repository.
 
 ## Reference
 
