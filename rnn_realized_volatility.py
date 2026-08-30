@@ -29,10 +29,15 @@ DROPOUT_CANDIDATES = [0.1, 0.2]
 LEARNING_RATE_CANDIDATES = [0.001, 0.002, 0.0005]
 OPTIMIZER_CANDIDATES = ["adam", "rmsprop", "sgd"]
 
-np.random.seed(RANDOM_SEED)
-tf.random.set_seed(RANDOM_SEED)
-
 #2. DATA PREPARATION
+#Load the original daily realized-volatility dataset and define NVDA.
+df_raw = pd.read_pickle("daily_metrics.pkl")
+nvda = df_raw[df_raw["sym_root"] == "NVDA"].copy()
+nvda["date"] = pd.to_datetime(nvda["date"])
+nvda.set_index("date", inplace=True)
+nvda.sort_index(inplace=True)
+nvda["rv_unit"] = pd.to_numeric(nvda["realized_volatility"], errors="coerce")
+
 #Download VIX data from Yahoo Finance.
 vix_data = yf.download("^VIX", start="2017-01-01", end="2026-01-01", auto_adjust=False)
 
@@ -64,8 +69,6 @@ model_df = model_df.join(vix_data, how="left")
 
 model_df["vix"] = model_df["vix"].ffill().bfill()
 
-print(model_df.columns.tolist())
-
 #3. FEATURE ENGINEERING
 
 #Ensure rv_unit is numeric
@@ -81,17 +84,13 @@ model_df["log_vix"] = np.log(model_df["vix"].clip(lower=1e-8))
 
 #Rolling volatility features
 #These summarize recent short-term volatility conditions.
-#model_df["rv_ma5"] = model_df["rv_unit"].rolling(5).mean()
 model_df["rv_ma10"] = model_df["rv_unit"].rolling(10).mean()
 
 #Log versions of rolling averages
-#model_df["log_rv_ma5"] = np.log(model_df["rv_ma5"].clip(lower=1e-8))
 model_df["log_rv_ma10"] = np.log(model_df["rv_ma10"].clip(lower=1e-8))
 
 #Target is next-day realized volatility.
 model_df["target"] = model_df["log_rv"].shift(-1)
-
-model_df = model_df.dropna().copy()
 
 #4. SPLIT DATA
 def split_data(df, feature_cols):
@@ -128,6 +127,10 @@ def build_rnn(
     dropout_rate=0.1,
     learning_rate=0.001,
     optimizer_name="adam"):
+
+    #Reset state so every configuration is reproducible and independent.
+    tf.keras.backend.clear_session()
+    tf.keras.utils.set_random_seed(RANDOM_SEED)
 
     model = Sequential()
     model.add(Input(shape=(seq_length, n_features))) # Explicitly define Input layer
@@ -200,16 +203,13 @@ def run_rnn(
     #Fit scalers only on training data to avoid leakage
     X_train = scaler_X.fit_transform(train_df[feature_cols])
     X_valid = scaler_X.transform(valid_df[feature_cols])
-    X_test = scaler_X.transform(test_df[feature_cols])
 
     y_train = scaler_y.fit_transform(train_df[["target"]])
     y_valid = scaler_y.transform(valid_df[["target"]])
-    y_test = scaler_y.transform(test_df[["target"]])
 
     #Create rolling sequences
     X_train_seq, y_train_seq, _ = make_sequences(X_train, y_train, train_df.index, seq_length)
     X_valid_seq, y_valid_seq, valid_dates = make_sequences(X_valid, y_valid, valid_df.index, seq_length)
-    X_test_seq, y_test_seq, test_dates = make_sequences(X_test, y_test, test_df.index, seq_length)
 
     #Build the RNN
     model = build_rnn(
@@ -258,11 +258,15 @@ def run_rnn(
         "history": history,
         "valid_actual": y_valid_actual.flatten(),
         "valid_pred": valid_pred.flatten(),
-        "valid_dates": valid_dates,
-        "model_object": model}
+        "valid_dates": valid_dates}
 
     # Test evaluation (if requested)
     if use_test:
+        X_test = scaler_X.transform(test_df[feature_cols])
+        y_test = scaler_y.transform(test_df[["target"]])
+        X_test_seq, y_test_seq, test_dates = make_sequences(
+            X_test, y_test, test_df.index, seq_length)
+
         test_pred_log = scaler_y.inverse_transform(model.predict(X_test_seq, verbose=0))
         y_test_actual_log = scaler_y.inverse_transform(y_test_seq)
         test_pred = np.exp(test_pred_log)
@@ -276,15 +280,6 @@ def run_rnn(
     return result
 
 #8. PRINT / PLOT HELPERS
-
-def print_validation_result(result, title=None):
-    if title is not None:
-        print(f"\n{title}")
-    print("--- Validation Performance (2023-2024) ---")
-    print(f"Validation RMSE: {result['Validation_RMSE']:.6f}")
-    print(f"Validation MAE : {result['Validation_MAE']:.6f}")
-
-
 def plot_validation_result(result, figure_title, forecast_label):
     plt.figure(figsize=(10, 5))
     plt.plot(result["history"].history["loss"], label="Training Loss")
@@ -305,6 +300,40 @@ def plot_validation_result(result, figure_title, forecast_label):
     plt.legend()
     plt.grid(True)
     plt.show()
+
+
+def tune_rnn(best_stage, layers):
+    tuning_rows = []
+    best_result = None
+
+    for dropout_rate in DROPOUT_CANDIDATES:
+        for learning_rate in LEARNING_RATE_CANDIDATES:
+            for units in UNITS_CANDIDATES:
+                for optimizer_name in OPTIMIZER_CANDIDATES:
+                    result = run_rnn(
+                        model_name=f"Tuned {best_stage['Model']}",
+                        feature_cols=best_stage["Features"],
+                        layers=layers,
+                        seq_length=SEQ_LENGTH,
+                        units=units,
+                        dropout_rate=dropout_rate,
+                        learning_rate=learning_rate,
+                        optimizer_name=optimizer_name,
+                        use_test=False)
+                    tuning_rows.append({
+                        "Model": result["Model"],
+                        "Optimizer": result["Optimizer"],
+                        "Dropout": result["Dropout"],
+                        "Learning_Rate": result["Learning_Rate"],
+                        "Units": result["Units"],
+                        "Validation_RMSE": result["Validation_RMSE"]})
+
+                    if (best_result is None or
+                            result["Validation_RMSE"] < best_result["Validation_RMSE"]):
+                        best_result = result
+
+    tuning_df = pd.DataFrame(tuning_rows).sort_values("Validation_RMSE")
+    return tuning_df, best_result
 
 #9. FEATURE SETS
 
@@ -332,7 +361,6 @@ for group_name, feature_cols in feature_groups.items():
         use_test=False)
     single_stage_results.append(res)
 
-    print_validation_result(res, f"Single-Layer {group_name}")
     plot_validation_result(
         res,
         figure_title=f"Single-Layer {group_name}",
@@ -354,34 +382,9 @@ print(f"\n>>> Best SINGLE-LAYER structure: {best_single_stage['Model']}")
 
 
 #11. STAGE C: SINGLE-LAYER HYPERPARAMETER TUNING
-single_tuning_results = []
-
-#Tune the better single-layer structure
-for dropout_rate in DROPOUT_CANDIDATES:
-    for learning_rate in LEARNING_RATE_CANDIDATES:
-        for units in UNITS_CANDIDATES:
-            for optimizer_name in OPTIMIZER_CANDIDATES:
-                res = run_rnn(
-                    model_name=f"Tuned {best_single_stage['Model']}",
-                    feature_cols=best_single_stage["Features"],
-                    layers=1,
-                    seq_length=SEQ_LENGTH,
-                    units=units,
-                    dropout_rate=dropout_rate,
-                    learning_rate=learning_rate,
-                    optimizer_name=optimizer_name,
-                    use_test=False)
-                single_tuning_results.append(res)
-
-single_tuning_df = pd.DataFrame([{
-    "Model": r["Model"],
-    "Optimizer": r["Optimizer"],
-    "Dropout": r["Dropout"],
-    "Learning_Rate": r["Learning_Rate"],
-    "Units": r["Units"],
-    "Validation_RMSE": r["Validation_RMSE"]} for r in single_tuning_results]).sort_values("Validation_RMSE")
-
-best_single_final = min(single_tuning_results, key=lambda x: x["Validation_RMSE"])
+single_tuning_df, best_single_final = tune_rnn(
+    best_single_stage,
+    layers=1)
 
 print("\n================ SINGLE-LAYER TUNING ======================")
 print(single_tuning_df.head(10))
@@ -406,7 +409,6 @@ for group_name, feature_cols in feature_groups.items():
         use_test=False)
     multi_stage_results.append(res)
 
-    print_validation_result(res, f"Multi-Layer {group_name}")
     plot_validation_result(
         res,
         figure_title=f"Multi-Layer {group_name}",
@@ -427,34 +429,9 @@ print(f"\n>>> Better MULTI-LAYER model: {best_multi_stage['Model']}")
 
 
 #13. STAGE E: MULTI-LAYER HYPERPARAMETER TUNING
-multi_tuning_results = []
-
-#Tune the better multi-layer structure
-for dropout_rate in DROPOUT_CANDIDATES:
-    for learning_rate in LEARNING_RATE_CANDIDATES:
-        for units in UNITS_CANDIDATES:
-            for optimizer_name in OPTIMIZER_CANDIDATES:
-                res = run_rnn(
-                    model_name=f"Tuned {best_multi_stage['Model']}",
-                    feature_cols=best_multi_stage["Features"],
-                    layers=2,
-                    seq_length=SEQ_LENGTH,
-                    units=units,
-                    dropout_rate=dropout_rate,
-                    learning_rate=learning_rate,
-                    optimizer_name=optimizer_name,
-                    use_test=False)
-                multi_tuning_results.append(res)
-
-multi_tuning_df = pd.DataFrame([{
-    "Model": r["Model"],
-    "Optimizer": r["Optimizer"],
-    "Dropout": r["Dropout"],
-    "Learning_Rate": r["Learning_Rate"],
-    "Units": r["Units"],
-    "Validation_RMSE": r["Validation_RMSE"]} for r in multi_tuning_results]).sort_values("Validation_RMSE")
-
-best_multi_final = min(multi_tuning_results, key=lambda x: x["Validation_RMSE"])
+multi_tuning_df, best_multi_final = tune_rnn(
+    best_multi_stage,
+    layers=2)
 
 print("\n================ MULTI-LAYER TUNING ======================")
 print(multi_tuning_df.head(10))
