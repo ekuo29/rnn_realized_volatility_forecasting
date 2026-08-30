@@ -2,7 +2,7 @@
 
 This project develops Recurrent Neural Network (RNN) models to forecast NVIDIA's next-day realized volatility. It investigates whether recurrent architectures can capture the long-memory behavior and clustering commonly observed in financial-market volatility. The analysis compares single-layer and multi-layer SimpleRNN models and tests whether adding a 10-day realized-volatility moving average and the CBOE Volatility Index (VIX) improves forecasting performance.
 
-## 🎯 Objectives
+## Project objectives
 
 - Forecast next-day realized volatility for NVIDIA (NVDA).
 - Compare single-layer and multi-layer SimpleRNN architectures.
