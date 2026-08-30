@@ -24,6 +24,19 @@ The input file, `daily_metrics.pkl`, must contain at least the following columns
 
 Realized volatility measures the variation observed from intraday price movements, while VIX represents the market's forward-looking implied-volatility expectations. VIX is evaluated as an external feature because broader market uncertainty may help explain changes in NVIDIA's volatility.
 
+## How the RNN works
+
+An RNN reads a time series one observation at a time. At each step, it combines the current input with a hidden state carrying information from earlier observations. This memory allows the model to learn temporal patterns such as volatility persistence and clustering.
+
+The code implements this process as follows:
+
+1. It transforms realized volatility, its 10-day moving average, and VIX into log features and creates a shifted next-day target.
+2. It splits the observations chronologically and fits the feature and target scalers using training data only.
+3. It converts each dataset into 21-day sequences, so the RNN receives recent volatility history as a three-dimensional input: samples, time steps, and features.
+4. Each `SimpleRNN` layer updates its hidden state as it moves through the sequence. In the two-layer model, the first layer returns the full sequence of hidden states to the second layer.
+5. Dropout randomly removes part of the hidden representation during training to reduce overfitting, and the final dense layer produces one scaled log-volatility forecast.
+6. The model minimizes Huber loss with early stopping. Predictions are transformed back to the original realized-volatility scale before RMSE and MAE are calculated.
+
 ## Modeling approach
 
 | Stage | Implementation |
@@ -48,9 +61,13 @@ The multivariate specifications test a volatility moving average, VIX, and their
 | Best tuned single-layer RNN | 0.006432 |
 | Best tuned multi-layer RNN | 0.006427 |
 
-The tuned multi-layer RNN produced the lowest validation RMSE, although its improvement over the tuned single-layer model was small. The selected specification used `log_rv` and `log_rv_ma10`, indicating that recent volatility history was more useful than including VIX in the final model.
+The tuned multi-layer RNN produced the lowest validation RMSE. Its RMSE was only 0.000005 lower than that of the tuned single-layer model, an improvement of approximately 0.08%. The additional recurrent layer therefore provided only a marginal validation benefit.
 
-The selected RNN achieved a test RMSE of **0.006548** on the reserved 2025 observations.
+The selected specification used `log_rv` and `log_rv_ma10`. This suggests that NVIDIA's recent volatility level and smoothed volatility history contained the strongest predictive information among the tested feature sets. VIX was evaluated but was not part of the winning specification, so it did not provide enough incremental validation improvement in this sample. This does not imply that VIX is uninformative in other assets or market periods.
+
+The selected RNN achieved a test RMSE of **0.006548** on the reserved 2025 observations. This was approximately 1.9% higher than its validation RMSE, indicating a modest deterioration on unseen data rather than a large validation-to-test gap. RMSE was calculated after reversing the scaling and log transformation, so the reported values are on the original realized-volatility scale.
+
+These results compare the RNN specifications tested in this repository. A direct claim that the RNN outperforms traditional forecasting methods would require comparison with a benchmark such as a historical-average, autoregressive, or HAR model.
 
 ## Reproduce the analysis
 
