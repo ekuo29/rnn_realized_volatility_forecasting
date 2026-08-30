@@ -1,6 +1,6 @@
 # RNN Realized Volatility Forecasting
 
-This repository contains my original Recurrent Neural Network (RNN) contribution to a FINANCE 704 group project on next-day realized-volatility forecasting. The code is preserved as submitted and excludes the other group members' models.
+This repository contains my Recurrent Neural Network (RNN) contribution to a FINANCE 704 group project on next-day realized-volatility forecasting. It keeps the original modeling choices and excludes the other group members' models.
 
 ## Project objective
 
@@ -13,9 +13,9 @@ The analysis tests whether recurrent neural networks can capture the persistence
 - learning rates of 0.0005, 0.001, and 0.002; and
 - Adam, RMSprop, and SGD optimizers.
 
-## Original modeling workflow
+## Modeling workflow
 
-| Stage | Original implementation |
+| Stage | Implementation |
 |---|---|
 | Target | Shifted next-day log realized volatility |
 | Input window | 21 observations |
@@ -39,14 +39,21 @@ The final RNN recorded a test RMSE of **0.006548** in the submitted group report
 
 ## Code
 
-[`rnn_realized_volatility.py`](rnn_realized_volatility.py) is the exact RNN section from the submitted group Python export. Its model logic, sequence construction, tuning loops, variable names, comments, and plotting code have not been refactored or rewritten.
+[`rnn_realized_volatility.py`](rnn_realized_volatility.py) contains the original RNN analysis with light cleanup of redundant code. The feature comparisons, model architectures, hyperparameter grid, validation-based selection, and final test workflow are unchanged.
 
-The original section begins after the group's shared preprocessing and therefore expects an existing `nvda` pandas DataFrame with:
+The script now defines the `nvda` DataFrame directly from `daily_metrics.pkl`. Keep that file in the same folder when running the analysis. The dataset must contain:
 
-- a datetime index; and
-- an `rv_unit` column containing NVIDIA realized volatility.
+- a `sym_root` column containing the ticker symbol;
+- a `date` column; and
+- a `realized_volatility` column.
 
 It downloads VIX observations with `yfinance`, constructs the RNN features, trains the candidate models, selects the final specification using validation RMSE, and evaluates the selected model on the test period.
+
+Run the analysis with:
+
+```bash
+python rnn_realized_volatility.py
+```
 
 ## Dependencies
 
@@ -60,14 +67,14 @@ python -m pip install -r requirements.txt
 
 ```text
 .
-├── rnn_realized_volatility.py   # Original submitted RNN code
+├── rnn_realized_volatility.py   # Cleaned original RNN analysis
 ├── requirements.txt             # Python dependencies
 └── README.md
 ```
 
-## Data and publication note
+## Publication note
 
-The course dataset, assignment instructions, full group report, and classmates' code are intentionally excluded because they are course or third-party materials. This repository contains only my original RNN contribution and a project description.
+The assignment instructions, full group report, and classmates' code are intentionally excluded. This repository is intended to focus on my RNN contribution. The course dataset may have separate redistribution restrictions, so permission should be confirmed before keeping `daily_metrics.pkl` in a public repository.
 
 No open-source license has been applied. The repository does not grant redistribution rights for the underlying course data.
 
